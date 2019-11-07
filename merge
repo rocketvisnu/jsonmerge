@@ -1,0 +1,131 @@
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Scanner;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class ObjectSizeFetcher {
+
+private String rootKey = null;
+private String filePath = null;
+private List<Object> valueObj = new ArrayList<>();
+private List<String> outputFiles = new ArrayList<String>();
+private List<String> jsonListLocs = new ArrayList<String>();
+
+private void readFiles(File[] jsonList,
+String inputFilePrefix, 
+String outputFilePrefix){
+for(File jsonFile : jsonList)
+{
+if(jsonFile.getName().startsWith(inputFilePrefix))
+{
+if(filePath==null)
+{
+filePath = jsonFile.getParent();
+}
+jsonListLocs.add(jsonFile.getPath());
+}
+else if(jsonFile.getName().startsWith(outputFilePrefix))
+{
+outputFiles.add(jsonFile.getName());
+}
+}
+}
+
+public void mergeJson(String file, 
+String inputFilePrefix, 
+String outputFilePrefix,
+long length){
+
+File JSONFolder = new File(file);
+if(JSONFolder.exists())
+{
+File[] jsonList = JSONFolder.listFiles();
+readFiles(jsonList,inputFilePrefix,outputFilePrefix);
+Collections.sort(outputFiles);
+Collections.sort(jsonListLocs);
+for(String jsonFile : jsonListLocs)
+{
+try(Scanner scanner = new Scanner(Paths.get(jsonFile), 
+StandardCharsets.UTF_8.name()))
+{
+String content = scanner.useDelimiter("\\A").next();
+ObjectMapper mapper = new ObjectMapper();
+Map<String, Object> mapFromString = new HashMap<>();
+try {
+mapFromString = mapper.readValue(content, Map.class);
+
+for(Map.Entry<String, Object> entry : 
+mapFromString.entrySet()) {
+if(rootKey==null)
+{
+rootKey = entry.getKey();
+}
+List<LinkedHashMap<String, String>> temp = 
+(List)entry.getValue();
+for(LinkedHashMap<String, String> ab : temp)
+{
+valueObj.add(ab);
+}
+}
+}
+catch (IOException e) {
+e.printStackTrace();
+}
+} catch (IOException e) {
+e.printStackTrace();
+}
+}
+ByteArrayOutputStream out = new ByteArrayOutputStream();
+ObjectMapper mapper = new ObjectMapper();
+try {
+mapper.writeValue(out, valueObj);
+} catch (IOException e) {
+e.printStackTrace();
+}
+final byte[] data = out.toByteArray();
+String reqJSON = "{\""+rootKey+"\":"+new String(data)+"}";
+String outputFileName = filePath+"/"+outputFilePrefix+
+(outputFiles.size()>0?
+(Integer.parseInt(
+outputFiles.get(outputFiles.size()-1)
+.split(outputFilePrefix)[1].split("\\.")[0])+1):
+"1")+".json";
+;
+try(BufferedWriter writer= new BufferedWriter(
+new FileWriter(outputFileName))) {
+writer.write(reqJSON);
+writer.close();
+} catch (IOException e) {
+System.out.println("output File could not be generated"
++e.getLocalizedMessage());
+}
+if(new File(outputFileName).length() <= length)
+System.out.println("File Generated with length contstraint");
+}
+else
+{
+System.out.println("Wrong Folder Path");
+}
+}
+
+public static void main(String[] args){
+ObjectSizeFetcher obj = new ObjectSizeFetcher();
+
+String input = "data";
+String output = "merge";
+String file = ".";
+obj.mergeJson(file, input,output,250);
+}
+}
